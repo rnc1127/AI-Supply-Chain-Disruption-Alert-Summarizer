@@ -58,11 +58,21 @@
 
         <!-- Main Content Area -->
         <main class="main-content">
-            <!-- Header -->
+                        <!-- Header -->
             <header class="main-header">
                 <div class="header-title">
                     <h1 id="page-title">Supply Chain Disruption Dashboard</h1>
                     <p class="subtitle">Manikanta Enterprises Supply Chain Intelligence & Risk Mitigation</p>
+                </div>
+                <!-- Supply Chain Intelligence capsule -->
+                <div class="intelligence-platform-capsule" id="intelligence-platform-capsule">
+                    <div class="capsule-icon-title">
+                        <i class="fa-solid fa-network-wired"></i>
+                        <span>Supply Chain Intelligence Platform</span>
+                    </div>
+                    <div class="capsule-status">
+                        Current Anomalies: <span class="anomaly-count">1</span> <span class="anomaly-text">Active Disruption</span>
+                    </div>
                 </div>
                 <div class="theme-controls">
                     <button id="theme-toggle" class="theme-toggle-btn" title="Toggle Theme">
@@ -76,27 +86,18 @@
                 <div class="dashboard-grid">
                     <!-- Left Side: Input Form & Presets -->
                     <div class="input-pane">
-                        <div class="glass-card">
-                            <div class="card-header">
-                                <i class="fa-solid fa-keyboard text-gradient"></i>
-                                <h2>Log Disruption Alert</h2>
+                        <div class="glass-card flex-form-card">
+                            <div class="card-header-tabs">
+                                <button class="form-tab-btn active" type="button"><i class="fa-solid fa-keyboard"></i> Log Disruption Alert</button>
+                                <button class="form-tab-btn" type="button" disabled><i class="fa-solid fa-gear"></i> Configuration</button>
                             </div>
                             
-                            <!-- Template Presets Selector -->
-                            <div class="presets-section">
-                                <label class="field-label"><i class="fa-solid fa-wand-magic-sparkles"></i> Load Disruption Template Preset</label>
-                                <div class="presets-grid" id="presets-container">
-                                    <!-- Dynamic Presets Loaded Here -->
-                                    <div class="loading-presets">Loading presets...</div>
-                                </div>
-                            </div>
-
                             <form id="disruption-form" class="disruption-form">
                                 <div class="form-group">
                                     <label for="admin_name" class="field-label">Admin Logger Name <span class="required">*</span></label>
                                     <div class="input-wrapper">
                                         <i class="fa-solid fa-user"></i>
-                                        <input type="text" id="admin_name" required placeholder="e.g. Kalyan Kumar" maxlength="50">
+                                        <input type="text" id="admin_name" required placeholder="e.g. Ramesh Naidu" maxlength="50">
                                     </div>
                                     <span class="error-msg" id="admin-error"></span>
                                 </div>
@@ -105,7 +106,7 @@
                                     <label for="supplier_name" class="field-label">Supplier Company <span class="required">*</span></label>
                                     <div class="input-wrapper">
                                         <i class="fa-solid fa-truck-field"></i>
-                                        <input type="text" id="supplier_name" required placeholder="e.g. Deccan Steel Ltd" maxlength="100">
+                                        <input type="text" id="supplier_name" required placeholder="e.g. UltraPack Industries" maxlength="100">
                                     </div>
                                     <span class="error-msg" id="supplier-error"></span>
                                 </div>
@@ -119,9 +120,23 @@
                                     <span class="error-msg" id="inputs-error"></span>
                                 </div>
 
-                                <div class="form-actions">
-                                    <button type="submit" id="submit-btn" class="btn btn-primary">
-                                        <i class="fa-solid fa-brain"></i>
+                                <!-- Custom Preset Selector Dropdown -->
+                                <div class="presets-dropdown-section">
+                                    <label class="field-label"><i class="fa-solid fa-wand-magic-sparkles"></i> Load Disruption Template Presets</label>
+                                    <div class="preset-select-wrapper">
+                                        <select id="preset-select" class="presets-select">
+                                            <option value="" disabled selected>Load Disruption Template Presets</option>
+                                            <!-- Option list will be loaded dynamically by JS -->
+                                        </select>
+                                        <button class="preset-filter-btn" type="button" title="Filter Presets">
+                                            <i class="fa-solid fa-filter"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="form-actions center-actions">
+                                    <button type="submit" id="submit-btn" class="btn btn-cyan">
+                                        <i class="fa-solid fa-circle-dot"></i>
                                         <span>Generate AI Summary</span>
                                     </button>
                                 </div>
@@ -129,28 +144,167 @@
                         </div>
                     </div>
 
-                    <!-- Right Side: AI Generated Output Display -->
+                    <!-- Right Side: Visualizer and Status Tree or Output Display -->
                     <div class="output-pane">
-                        <!-- Default placeholder state -->
-                        <div class="glass-card output-placeholder" id="output-placeholder">
-                            <div class="placeholder-icon">
-                                <i class="fa-solid fa-brain-circuit pulse-animation"></i>
+                        
+                        <!-- Visualizer & Status Timeline Container -->
+                        <div class="visualizer-container" id="visualizer-container">
+                            <!-- Disruption Visualizer Card -->
+                            <div class="glass-card visualizer-card">
+                                <div class="card-header">
+                                    <i class="fa-solid fa-circle-nodes text-emerald"></i>
+                                    <h2>Disruption Visualizer</h2>
+                                </div>
+                                <div class="visualizer-content">
+                                    <svg class="network-svg" viewBox="0 0 500 250">
+                                        <!-- Connection Routes -->
+                                        <line x1="180" y1="100" x2="290" y2="65" class="network-line line-flow" />
+                                        <line x1="180" y1="100" x2="240" y2="165" class="network-line" />
+                                        <line x1="180" y1="100" x2="180" y2="210" class="network-line" />
+                                        <line x1="290" y1="65" x2="350" y2="100" class="network-line" />
+                                        <line x1="290" y1="65" x2="350" y2="125" class="network-line" />
+                                        <line x1="350" y1="100" x2="425" y2="100" class="network-line line-flow" />
+                                        <line x1="350" y1="100" x2="350" y2="125" class="network-line" />
+                                        <line x1="425" y1="100" x2="350" y2="125" class="network-line" />
+                                        <line x1="425" y1="100" x2="420" y2="205" class="network-line" />
+                                        <line x1="180" y1="210" x2="240" y2="165" class="network-line" />
+                                        <line x1="180" y1="210" x2="310" y2="230" class="network-line" />
+                                        <line x1="240" y1="165" x2="310" y2="230" class="network-line" />
+                                        <line x1="240" y1="165" x2="350" y2="125" class="network-line" />
+                                        <line x1="310" y1="230" x2="350" y2="125" class="network-line line-flow" />
+                                        <line x1="310" y1="230" x2="420" y2="205" class="network-line" />
+                                        <line x1="420" y1="205" x2="350" y2="125" class="network-line" />
+
+                                        <!-- Network Nodes -->
+                                        <!-- Node C: Top-Left Truck -->
+                                        <g class="network-node" transform="translate(180, 100)" filter="url(#glow-green)">
+                                            <circle r="16" class="node-circle" />
+                                            <foreignObject x="-8" y="-9" width="16" height="16">
+                                                <i class="fa-solid fa-truck"></i>
+                                            </foreignObject>
+                                        </g>
+                                        <!-- Node B: Top Box -->
+                                        <g class="network-node" transform="translate(290, 65)" filter="url(#glow-green)">
+                                            <circle r="16" class="node-circle" />
+                                            <foreignObject x="-7" y="-9" width="16" height="16">
+                                                <i class="fa-solid fa-box"></i>
+                                            </foreignObject>
+                                        </g>
+                                        <!-- Node D: Top-Right Warehouse -->
+                                        <g class="network-node" transform="translate(350, 100)" filter="url(#glow-green)">
+                                            <circle r="16" class="node-circle" />
+                                            <foreignObject x="-8" y="-9" width="16" height="16">
+                                                <i class="fa-solid fa-warehouse"></i>
+                                            </foreignObject>
+                                        </g>
+                                        <!-- Node E: Far-Right Truck -->
+                                        <g class="network-node" transform="translate(425, 100)" filter="url(#glow-green)">
+                                            <circle r="16" class="node-circle" />
+                                            <foreignObject x="-8" y="-9" width="16" height="16">
+                                                <i class="fa-solid fa-truck"></i>
+                                            </foreignObject>
+                                        </g>
+                                        <!-- Node A (Center/Right-Center): Wrench/Tools Hub -->
+                                        <g class="network-node active-hub" transform="translate(350, 125)" filter="url(#glow-green)">
+                                            <circle r="18" class="node-circle hub-circle" />
+                                            <foreignObject x="-8" y="-9" width="16" height="16">
+                                                <i class="fa-solid fa-wrench"></i>
+                                            </foreignObject>
+                                        </g>
+                                        <!-- Node I: Middle-Left Shop -->
+                                        <g class="network-node" transform="translate(240, 165)" filter="url(#glow-green)">
+                                            <circle r="16" class="node-circle" />
+                                            <foreignObject x="-8" y="-9" width="16" height="16">
+                                                <i class="fa-solid fa-shop"></i>
+                                            </foreignObject>
+                                        </g>
+                                        <!-- Node F: Bottom-Left Truck -->
+                                        <g class="network-node" transform="translate(180, 210)" filter="url(#glow-green)">
+                                            <circle r="16" class="node-circle" />
+                                            <foreignObject x="-8" y="-9" width="16" height="16">
+                                                <i class="fa-solid fa-truck"></i>
+                                            </foreignObject>
+                                        </g>
+                                        <!-- Node G: Bottom-Center Pin -->
+                                        <g class="network-node" transform="translate(310, 230)" filter="url(#glow-green)">
+                                            <circle r="16" class="node-circle" />
+                                            <foreignObject x="-6" y="-9" width="16" height="16">
+                                                <i class="fa-solid fa-location-dot"></i>
+                                            </foreignObject>
+                                        </g>
+                                        <!-- Node H: Far-Right-Bottom Gift -->
+                                        <g class="network-node" transform="translate(420, 205)" filter="url(#glow-green)">
+                                            <circle r="16" class="node-circle" />
+                                            <foreignObject x="-8" y="-9" width="16" height="16">
+                                                <i class="fa-solid fa-gift"></i>
+                                            </foreignObject>
+                                        </g>
+
+                                        <!-- Glow Filters Definition -->
+                                        <defs>
+                                            <filter id="glow-green" x="-20%" y="-20%" width="140%" height="140%">
+                                                <feGaussianBlur stdDeviation="3" result="blur" />
+                                                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                            </filter>
+                                        </defs>
+                                    </svg>
+                                </div>
                             </div>
-                            <h3>Awaiting Disruption Input</h3>
-                            <p>Enter details on the left, or click a quick-load preset to generate the impact summary, customer risks, and recommendations.</p>
+
+                            <!-- Disruption Status Card -->
+                            <div class="glass-card status-card">
+                                <div class="card-header">
+                                    <i class="fa-solid fa-diagram-project text-gradient"></i>
+                                    <h2>Disruption Status</h2>
+                                </div>
+                                <div class="status-content">
+                                    <!-- Curved Tree SVG Connector -->
+                                    <svg class="status-tree-svg" width="50" height="180" viewBox="0 0 50 180">
+                                        <!-- Vertical Stem -->
+                                        <path d="M15,10 L15,115" stroke="rgba(255, 255, 255, 0.15)" stroke-width="2" fill="none" id="stem-line" />
+                                        <!-- Branches (light up green when active) -->
+                                        <path d="M15,25 Q15,25 25,25 L45,25" stroke="rgba(255, 255, 255, 0.15)" stroke-width="2" fill="none" class="status-branch" id="branch-1" />
+                                        <path d="M15,70 L45,70" stroke="rgba(255, 255, 255, 0.15)" stroke-width="2" fill="none" class="status-branch" id="branch-2" />
+                                        <path d="M15,115 L45,115" stroke="rgba(255, 255, 255, 0.15)" stroke-width="2" fill="none" class="status-branch" id="branch-3" />
+                                        <path d="M15,115 Q15,160 30,160 L45,160" stroke="rgba(255, 255, 255, 0.15)" stroke-width="2" fill="none" class="status-branch" id="branch-4" />
+                                    </svg>
+
+                                    <!-- Status Steps List -->
+                                    <div class="status-steps-list">
+                                        <div class="status-step" id="step-1">
+                                            <span class="status-step-dot"></span>
+                                            <div class="status-step-info">
+                                                <span class="status-step-title">Disruption Type Identified</span>
+                                            </div>
+                                        </div>
+                                        <div class="status-step" id="step-2">
+                                            <span class="status-step-dot"></span>
+                                            <div class="status-step-info">
+                                                <span class="status-step-title">Supplier Details Confirmed</span>
+                                            </div>
+                                        </div>
+                                        <div class="status-step" id="step-3">
+                                            <span class="status-step-dot"></span>
+                                            <div class="status-step-info">
+                                                <span class="status-step-title">Impact Quantified</span>
+                                            </div>
+                                        </div>
+                                        <div class="status-step" id="step-4">
+                                            <!-- Spinner shown during processing -->
+                                            <span class="status-step-dot dot-spinner">
+                                                <i class="fa-solid fa-sun fa-spin spinner-icon"></i>
+                                            </span>
+                                            <div class="status-step-info">
+                                                <span class="status-step-title spinner-step-title">Generating AI Summary</span>
+                                                <span class="status-step-sub" id="spinner-subtext">Processing Summary...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
-                        <!-- Generating Loading State -->
-                        <div class="glass-card loading-state hidden" id="loading-state">
-                            <div class="spinner-container">
-                                <div class="double-bounce1"></div>
-                                <div class="double-bounce2"></div>
-                            </div>
-                            <h3>AI Engine Processing...</h3>
-                            <p>Analyzing supplier details, mapping Hyderabad retail impact, and drafting mitigation actions.</p>
-                        </div>
-
-                        <!-- Main Output Area -->
+                        <!-- Main Output Assessment Report (hidden by default) -->
                         <div class="glass-card output-card hidden" id="output-card">
                             <div class="output-header">
                                 <div class="header-left">
@@ -158,6 +312,10 @@
                                     <span class="latency-badge" id="latency-text">Response: 3.2s</span>
                                 </div>
                                 <div class="header-right">
+                                    <!-- Toggle back to Visualizer button -->
+                                    <button class="btn btn-secondary btn-xs" id="toggle-visualizer-btn" style="margin-right: 8px;">
+                                        <i class="fa-solid fa-network-wired"></i> Map View
+                                    </button>
                                     <button class="output-action-btn" id="regenerate-btn" title="Regenerate Output">
                                         <i class="fa-solid fa-rotate"></i>
                                     </button>

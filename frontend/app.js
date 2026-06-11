@@ -199,16 +199,20 @@ async function setupPresets() {
         templates = DEFAULT_PRESETS;
     }
     
-    presetsContainer.innerHTML = '';
+    const select = document.getElementById('preset-select');
+    select.innerHTML = '<option value="" disabled selected>Load Disruption Template Presets</option>';
     
     templates.forEach(t => {
-        const btn = document.createElement('button');
-        btn.className = 'preset-chip';
-        btn.type = 'button';
-        btn.title = t.title;
-        btn.innerHTML = `<i class="fa-solid fa-file-invoice"></i> ${t.title}`;
-        
-        btn.addEventListener('click', () => {
+        const opt = document.createElement('option');
+        opt.value = JSON.stringify(t);
+        opt.innerText = t.title;
+        select.appendChild(opt);
+    });
+    
+    // Add change event listener
+    select.addEventListener('change', (e) => {
+        try {
+            const t = JSON.parse(e.target.value);
             document.getElementById('admin_name').value = t.admin_name;
             document.getElementById('supplier_name').value = t.supplier_name;
             document.getElementById('supplier_inputs').value = t.inputs;
@@ -216,10 +220,87 @@ async function setupPresets() {
             // Trigger counter update manually
             charCurrent.innerText = t.inputs.length;
             showToast(`Loaded Template: ${t.title}`);
-        });
-        presetsContainer.appendChild(btn);
+        } catch (err) {
+            console.error("Preset selection error:", err);
+        }
     });
 }
+
+// Helper to animate curved-tree branches step-by-step
+const animateSteps = () => {
+    return new Promise(resolve => {
+        // Reset active classes
+        document.querySelectorAll('.status-step').forEach(el => el.classList.remove('active'));
+        
+        // Reset SVG paths strokes
+        const stem = document.getElementById('stem-line');
+        if (stem) {
+            stem.style.stroke = 'rgba(255, 255, 255, 0.15)';
+            stem.style.filter = 'none';
+        }
+        
+        for (let i = 1; i <= 4; i++) {
+            const b = document.getElementById(`branch-${i}`);
+            if (b) {
+                b.style.stroke = 'rgba(255, 255, 255, 0.15)';
+                b.style.filter = 'none';
+            }
+        }
+        
+        // Step 1: Disruption Type Identified
+        setTimeout(() => {
+            const el = document.getElementById('step-1');
+            const b = document.getElementById('branch-1');
+            if (el) el.classList.add('active');
+            if (b) {
+                b.style.stroke = '#10b981';
+                b.style.filter = 'drop-shadow(0 0 4px #10b981)';
+            }
+        }, 200);
+        
+        // Step 2: Supplier Details Confirmed
+        setTimeout(() => {
+            const el = document.getElementById('step-2');
+            const b = document.getElementById('branch-2');
+            if (el) el.classList.add('active');
+            if (b) {
+                b.style.stroke = '#10b981';
+                b.style.filter = 'drop-shadow(0 0 4px #10b981)';
+            }
+        }, 700);
+        
+        // Step 3: Impact Quantified
+        setTimeout(() => {
+            const el = document.getElementById('step-3');
+            const b = document.getElementById('branch-3');
+            if (el) el.classList.add('active');
+            if (b) {
+                b.style.stroke = '#10b981';
+                b.style.filter = 'drop-shadow(0 0 4px #10b981)';
+            }
+        }, 1200);
+        
+        // Step 4: Generating AI Summary
+        setTimeout(() => {
+            const el = document.getElementById('step-4');
+            const b = document.getElementById('branch-4');
+            if (el) el.classList.add('active');
+            if (b) {
+                b.style.stroke = '#10b981';
+                b.style.filter = 'drop-shadow(0 0 4px #10b981)';
+            }
+            if (stem) {
+                stem.style.stroke = '#10b981';
+                stem.style.filter = 'drop-shadow(0 0 4px #10b981)';
+            }
+        }, 1700);
+        
+        // Minimum visual loading duration
+        setTimeout(() => {
+            resolve();
+        }, 2200);
+    });
+};
 
 // 6. Form Submission (Calling AI generation endpoint)
 function setupFormSubmission() {
@@ -252,38 +333,58 @@ function setupFormSubmission() {
         if (hasError) return;
 
         // Toggle Loading State
-        outputPlaceholder.classList.add('hidden');
-        outputCard.classList.add('hidden');
-        loadingState.classList.remove('hidden');
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
         
-        try {
-            const res = await fetch('/api/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    admin_name: adminName,
-                    supplier_name: supplierName,
-                    supplier_inputs: inputs
-                })
-            });
-            
-            if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.error || 'Failed to generate alert analysis');
+        // Show visualizer container, hide output card to display steps loader
+        document.getElementById('visualizer-container').classList.remove('hidden');
+        document.getElementById('output-card').classList.add('hidden');
+        
+        // Start checkmark steps animation progress
+        const stepsPromise = animateSteps();
+        
+        // Fetch API request
+        let apiData = null;
+        let apiError = null;
+        const apiPromise = (async () => {
+            try {
+                const res = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        admin_name: adminName,
+                        supplier_name: supplierName,
+                        supplier_inputs: inputs
+                    })
+                });
+                
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.error || 'Failed to generate alert analysis');
+                }
+                
+                apiData = await res.json();
+            } catch (err) {
+                apiError = err;
             }
+        })();
+        
+        try {
+            // Wait for both progress steps loader and server response
+            await Promise.all([stepsPromise, apiPromise]);
             
-            const data = await res.json();
+            if (apiError) {
+                throw apiError;
+            }
             
             // Immediately save to local storage history
             const newItem = {
-                id: data.id,
-                admin_name: data.admin_name,
-                supplier_name: data.supplier_name,
-                supplier_inputs: data.supplier_inputs,
-                ai_output: data.ai_output,
-                response_time_ms: data.response_time_ms,
+                id: apiData.id,
+                admin_name: apiData.admin_name,
+                supplier_name: apiData.supplier_name,
+                supplier_inputs: apiData.supplier_inputs,
+                ai_output: apiData.ai_output,
+                response_time_ms: apiData.response_time_ms,
                 timestamp: new Date().toISOString(),
                 rating: 0,
                 comment: ''
@@ -298,12 +399,19 @@ function setupFormSubmission() {
             localHistory.push(newItem);
             localStorage.setItem('summarizer_history', JSON.stringify(localHistory));
             
+            // Switch right pane view to output card
+            document.getElementById('visualizer-container').classList.add('hidden');
+            document.getElementById('output-card').classList.remove('hidden');
+            
+            const toggleBtn = document.getElementById('toggle-visualizer-btn');
+            if (toggleBtn) {
+                toggleBtn.innerHTML = '<i class="fa-solid fa-network-wired"></i> Map View';
+            }
+            
             renderOutput(newItem);
             
         } catch (err) {
             console.error(err);
-            loadingState.classList.add('hidden');
-            outputPlaceholder.classList.remove('hidden');
             showToast(err.message || 'An error occurred during generation', true);
         } finally {
             submitBtn.disabled = false;
@@ -494,6 +602,25 @@ function setupOutputActions() {
     regenerateBtn.addEventListener('click', () => {
         disruptionForm.dispatchEvent(new Event('submit'));
     });
+    
+    // Toggle visualizer/map view
+    const toggleBtn = document.getElementById('toggle-visualizer-btn');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            const visContainer = document.getElementById('visualizer-container');
+            const outCard = document.getElementById('output-card');
+            
+            if (visContainer.classList.contains('hidden')) {
+                visContainer.classList.remove('hidden');
+                outCard.classList.add('hidden');
+                toggleBtn.innerHTML = '<i class="fa-solid fa-file-invoice"></i> Report View';
+            } else {
+                visContainer.classList.add('hidden');
+                outCard.classList.remove('hidden');
+                toggleBtn.innerHTML = '<i class="fa-solid fa-network-wired"></i> Map View';
+            }
+        });
+    }
     
     // Format text representation for Copy/Download
     function getFormattedText() {
@@ -768,6 +895,14 @@ async function viewGenerationDetails(uid) {
         document.getElementById('supplier_name').value = item.supplier_name;
         document.getElementById('supplier_inputs').value = item.supplier_inputs;
         charCurrent.innerText = item.supplier_inputs.length;
+        
+        // Switch view to output card
+        document.getElementById('visualizer-container').classList.add('hidden');
+        document.getElementById('output-card').classList.remove('hidden');
+        const toggleBtn = document.getElementById('toggle-visualizer-btn');
+        if (toggleBtn) {
+            toggleBtn.innerHTML = '<i class="fa-solid fa-network-wired"></i> Map View';
+        }
         
         // Switch to Dashboard Tab
         const dashBtn = document.querySelector('.nav-btn[data-tab="dashboard-tab"]');
