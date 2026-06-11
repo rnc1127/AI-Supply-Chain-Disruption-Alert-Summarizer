@@ -422,7 +422,7 @@ function setupFormSubmission() {
 
 // Render AI Output into DOM
 function renderOutput(data) {
-    loadingState.classList.add('hidden');
+    if (loadingState) loadingState.classList.add('hidden');
     outputCard.classList.remove('hidden');
     
     currentGenId = data.id;
