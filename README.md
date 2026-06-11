@@ -82,8 +82,8 @@ python -m unittest tests/test_api.py
 ---
 
 ## Deployed Links & Deliverables
-* **Live Application URL**: [https://manikanta-summarizer.vercel.app](https://manikanta-summarizer.vercel.app) *(simulated)*
-* **GitHub Repository**: [https://github.com/manikanta-enterprises/alert-summarizer](https://github.com/manikanta-enterprises/alert-summarizer) *(simulated)*
+* **Live Application URL**: [https://ai-supply-chain-alert-summarizer.vercel.app](https://ai-supply-chain-alert-summarizer.vercel.app)
+* **GitHub Repository**: [https://github.com/rnc1127/AI-Supply-Chain-Disruption-Alert-Summarizer](https://github.com/rnc1127/AI-Supply-Chain-Disruption-Alert-Summarizer)
 * **Demo Video Link**: [https://youtu.be/dQw4w9WgXcQ](https://youtu.be/dQw4w9WgXcQ) *(simulated)*
 * **Report PDF**: Located at `/docs/final_report.md`
 * **PPT File**: Located at `/docs/final_ppt.md`
