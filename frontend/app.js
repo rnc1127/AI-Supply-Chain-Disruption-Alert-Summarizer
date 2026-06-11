@@ -199,20 +199,17 @@ async function setupPresets() {
         templates = DEFAULT_PRESETS;
     }
     
-    const select = document.getElementById('preset-select');
-    select.innerHTML = '<option value="" disabled selected>Load Disruption Template Presets</option>';
+    const container = document.getElementById('presets-container');
+    if (!container) return;
+    container.innerHTML = '';
     
     templates.forEach(t => {
-        const opt = document.createElement('option');
-        opt.value = JSON.stringify(t);
-        opt.innerText = t.title;
-        select.appendChild(opt);
-    });
-    
-    // Add change event listener
-    select.addEventListener('change', (e) => {
-        try {
-            const t = JSON.parse(e.target.value);
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'preset-chip';
+        chip.innerHTML = `<i class="fa-regular fa-file-lines" style="margin-right: 6px;"></i> ${t.title}`;
+        
+        chip.addEventListener('click', () => {
             document.getElementById('admin_name').value = t.admin_name;
             document.getElementById('supplier_name').value = t.supplier_name;
             document.getElementById('supplier_inputs').value = t.inputs;
@@ -220,87 +217,11 @@ async function setupPresets() {
             // Trigger counter update manually
             charCurrent.innerText = t.inputs.length;
             showToast(`Loaded Template: ${t.title}`);
-        } catch (err) {
-            console.error("Preset selection error:", err);
-        }
+        });
+        
+        container.appendChild(chip);
     });
 }
-
-// Helper to animate curved-tree branches step-by-step
-const animateSteps = () => {
-    return new Promise(resolve => {
-        // Reset active classes
-        document.querySelectorAll('.status-step').forEach(el => el.classList.remove('active'));
-        
-        // Reset SVG paths strokes
-        const stem = document.getElementById('stem-line');
-        if (stem) {
-            stem.style.stroke = 'rgba(255, 255, 255, 0.15)';
-            stem.style.filter = 'none';
-        }
-        
-        for (let i = 1; i <= 4; i++) {
-            const b = document.getElementById(`branch-${i}`);
-            if (b) {
-                b.style.stroke = 'rgba(255, 255, 255, 0.15)';
-                b.style.filter = 'none';
-            }
-        }
-        
-        // Step 1: Disruption Type Identified
-        setTimeout(() => {
-            const el = document.getElementById('step-1');
-            const b = document.getElementById('branch-1');
-            if (el) el.classList.add('active');
-            if (b) {
-                b.style.stroke = '#10b981';
-                b.style.filter = 'drop-shadow(0 0 4px #10b981)';
-            }
-        }, 200);
-        
-        // Step 2: Supplier Details Confirmed
-        setTimeout(() => {
-            const el = document.getElementById('step-2');
-            const b = document.getElementById('branch-2');
-            if (el) el.classList.add('active');
-            if (b) {
-                b.style.stroke = '#10b981';
-                b.style.filter = 'drop-shadow(0 0 4px #10b981)';
-            }
-        }, 700);
-        
-        // Step 3: Impact Quantified
-        setTimeout(() => {
-            const el = document.getElementById('step-3');
-            const b = document.getElementById('branch-3');
-            if (el) el.classList.add('active');
-            if (b) {
-                b.style.stroke = '#10b981';
-                b.style.filter = 'drop-shadow(0 0 4px #10b981)';
-            }
-        }, 1200);
-        
-        // Step 4: Generating AI Summary
-        setTimeout(() => {
-            const el = document.getElementById('step-4');
-            const b = document.getElementById('branch-4');
-            if (el) el.classList.add('active');
-            if (b) {
-                b.style.stroke = '#10b981';
-                b.style.filter = 'drop-shadow(0 0 4px #10b981)';
-            }
-            if (stem) {
-                stem.style.stroke = '#10b981';
-                stem.style.filter = 'drop-shadow(0 0 4px #10b981)';
-            }
-        }, 1700);
-        
-        // Minimum visual loading duration
-        setTimeout(() => {
-            resolve();
-        }, 2200);
-    });
-};
 
 // 6. Form Submission (Calling AI generation endpoint)
 function setupFormSubmission() {
@@ -336,46 +257,28 @@ function setupFormSubmission() {
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
         
-        // Show visualizer container, hide output card to display steps loader
-        document.getElementById('visualizer-container').classList.remove('hidden');
-        document.getElementById('output-card').classList.add('hidden');
-        
-        // Start checkmark steps animation progress
-        const stepsPromise = animateSteps();
-        
-        // Fetch API request
-        let apiData = null;
-        let apiError = null;
-        const apiPromise = (async () => {
-            try {
-                const res = await fetch('/api/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        admin_name: adminName,
-                        supplier_name: supplierName,
-                        supplier_inputs: inputs
-                    })
-                });
-                
-                if (!res.ok) {
-                    const errData = await res.json();
-                    throw new Error(errData.error || 'Failed to generate alert analysis');
-                }
-                
-                apiData = await res.json();
-            } catch (err) {
-                apiError = err;
-            }
-        })();
+        // Hide placeholder and output, show simple loading spinner
+        if (outputPlaceholder) outputPlaceholder.classList.add('hidden');
+        if (loadingState) loadingState.classList.remove('hidden');
+        if (outputCard) outputCard.classList.add('hidden');
         
         try {
-            // Wait for both progress steps loader and server response
-            await Promise.all([stepsPromise, apiPromise]);
+            const res = await fetch('/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    admin_name: adminName,
+                    supplier_name: supplierName,
+                    supplier_inputs: inputs
+                })
+            });
             
-            if (apiError) {
-                throw apiError;
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.error || 'Failed to generate alert analysis');
             }
+            
+            const apiData = await res.json();
             
             // Immediately save to local storage history
             const newItem = {
@@ -400,19 +303,16 @@ function setupFormSubmission() {
             localStorage.setItem('summarizer_history', JSON.stringify(localHistory));
             
             // Switch right pane view to output card
-            document.getElementById('visualizer-container').classList.add('hidden');
-            document.getElementById('output-card').classList.remove('hidden');
-            
-            const toggleBtn = document.getElementById('toggle-visualizer-btn');
-            if (toggleBtn) {
-                toggleBtn.innerHTML = '<i class="fa-solid fa-network-wired"></i> Map View';
-            }
+            if (loadingState) loadingState.classList.add('hidden');
+            if (outputCard) outputCard.classList.remove('hidden');
             
             renderOutput(newItem);
             
         } catch (err) {
             console.error(err);
             showToast(err.message || 'An error occurred during generation', true);
+            if (loadingState) loadingState.classList.add('hidden');
+            if (outputPlaceholder) outputPlaceholder.classList.remove('hidden');
         } finally {
             submitBtn.disabled = false;
             submitBtn.innerHTML = '<i class="fa-solid fa-brain"></i> <span>Generate AI Summary</span>';
@@ -603,24 +503,7 @@ function setupOutputActions() {
         disruptionForm.dispatchEvent(new Event('submit'));
     });
     
-    // Toggle visualizer/map view
-    const toggleBtn = document.getElementById('toggle-visualizer-btn');
-    if (toggleBtn) {
-        toggleBtn.addEventListener('click', () => {
-            const visContainer = document.getElementById('visualizer-container');
-            const outCard = document.getElementById('output-card');
-            
-            if (visContainer.classList.contains('hidden')) {
-                visContainer.classList.remove('hidden');
-                outCard.classList.add('hidden');
-                toggleBtn.innerHTML = '<i class="fa-solid fa-file-invoice"></i> Report View';
-            } else {
-                visContainer.classList.add('hidden');
-                outCard.classList.remove('hidden');
-                toggleBtn.innerHTML = '<i class="fa-solid fa-network-wired"></i> Map View';
-            }
-        });
-    }
+
     
     // Format text representation for Copy/Download
     function getFormattedText() {
@@ -897,12 +780,9 @@ async function viewGenerationDetails(uid) {
         charCurrent.innerText = item.supplier_inputs.length;
         
         // Switch view to output card
-        document.getElementById('visualizer-container').classList.add('hidden');
-        document.getElementById('output-card').classList.remove('hidden');
-        const toggleBtn = document.getElementById('toggle-visualizer-btn');
-        if (toggleBtn) {
-            toggleBtn.innerHTML = '<i class="fa-solid fa-network-wired"></i> Map View';
-        }
+        if (outputPlaceholder) outputPlaceholder.classList.add('hidden');
+        if (loadingState) loadingState.classList.add('hidden');
+        if (outputCard) outputCard.classList.remove('hidden');
         
         // Switch to Dashboard Tab
         const dashBtn = document.querySelector('.nav-btn[data-tab="dashboard-tab"]');
