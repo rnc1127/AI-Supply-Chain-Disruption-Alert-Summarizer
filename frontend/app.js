@@ -4,6 +4,35 @@ let currentRating = 0;
 let volumeChartInstance = null;
 let trendChartInstance = null;
 let supplierChartInstance = null;
+let mergedHistoryList = [];
+
+// Local Default Presets Fallback
+const DEFAULT_PRESETS = [
+    {
+        title: "Steel Sheet Delay from Hyderabad",
+        admin_name: "Kalyan Kumar",
+        supplier_name: "Deccan Steel Ltd",
+        inputs: "Due to sudden electrical failure at our Hyderabad smelting furnace, the shipment of 10 tons of mild steel sheets scheduled for June 12th will be delayed by 5 days. We expect repairs to be complete by June 14th."
+    },
+    {
+        title: "Cement Packaging Material Shortage",
+        admin_name: "Ramesh Naidu",
+        supplier_name: "UltraPack Industries",
+        inputs: "We are facing a temporary shortage of waterproof synthetic paper for the high-durability cement bags. The 50,000 bags ordered on June 8th will be delayed. Standard paper bags are available immediately if you wish to substitute."
+    },
+    {
+        title: "Logistics Strike in Andhra Border",
+        admin_name: "Sneha Reddy",
+        supplier_name: "VRL Logistics",
+        inputs: "A regional transport union strike on the NH44 border checkpost is delaying all interstate freight. Our trucks carrying plumbing fixtures and hardware parts from Nagpur are currently halted at the border. Expected resolution is 48-72 hours."
+    },
+    {
+        title: "Copper Cable Shortage",
+        admin_name: "Kalyan Kumar",
+        supplier_name: "Finolex Wire Distributors",
+        inputs: "Due to global copper copper rod supply chain bottlenecks, we are out of stock of 2.5sq mm multi-strand copper cables. Restocking is expected on June 22nd. Orders will be processed in queue order upon arrival."
+    }
+];
 
 // DOM Elements
 const navButtons = document.querySelectorAll('.nav-btn');
@@ -156,40 +185,40 @@ async function checkAPIStatus() {
 
 // 5. Presets Loading and Filling
 async function setupPresets() {
+    let templates = [];
     try {
         const res = await fetch('/api/templates');
-        if (!res.ok) throw new Error('Could not fetch templates');
-        
-        const templates = await res.json();
-        presetsContainer.innerHTML = '';
-        
-        if (templates.length === 0) {
-            presetsContainer.innerHTML = '<div class="preset-chip">No presets available</div>';
-            return;
+        if (res.ok) {
+            templates = await res.json();
         }
-
-        templates.forEach(t => {
-            const btn = document.createElement('button');
-            btn.className = 'preset-chip';
-            btn.type = 'button';
-            btn.title = t.title;
-            btn.innerHTML = `<i class="fa-solid fa-file-invoice"></i> ${t.title}`;
-            
-            btn.addEventListener('click', () => {
-                document.getElementById('admin_name').value = t.admin_name;
-                document.getElementById('supplier_name').value = t.supplier_name;
-                document.getElementById('supplier_inputs').value = t.inputs;
-                
-                // Trigger counter update manually
-                charCurrent.innerText = t.inputs.length;
-                showToast(`Loaded Template: ${t.title}`);
-            });
-            presetsContainer.appendChild(btn);
-        });
     } catch (e) {
-        console.error("Presets load error:", e);
-        presetsContainer.innerHTML = '<div class="preset-chip error">Error loading templates</div>';
+        console.warn("Could not fetch templates from server. Using local defaults:", e);
     }
+    
+    if (!templates || templates.length === 0) {
+        templates = DEFAULT_PRESETS;
+    }
+    
+    presetsContainer.innerHTML = '';
+    
+    templates.forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'preset-chip';
+        btn.type = 'button';
+        btn.title = t.title;
+        btn.innerHTML = `<i class="fa-solid fa-file-invoice"></i> ${t.title}`;
+        
+        btn.addEventListener('click', () => {
+            document.getElementById('admin_name').value = t.admin_name;
+            document.getElementById('supplier_name').value = t.supplier_name;
+            document.getElementById('supplier_inputs').value = t.inputs;
+            
+            // Trigger counter update manually
+            charCurrent.innerText = t.inputs.length;
+            showToast(`Loaded Template: ${t.title}`);
+        });
+        presetsContainer.appendChild(btn);
+    });
 }
 
 // 6. Form Submission (Calling AI generation endpoint)
@@ -246,7 +275,30 @@ function setupFormSubmission() {
             }
             
             const data = await res.json();
-            renderOutput(data);
+            
+            // Immediately save to local storage history
+            const newItem = {
+                id: data.id,
+                admin_name: data.admin_name,
+                supplier_name: data.supplier_name,
+                supplier_inputs: data.supplier_inputs,
+                ai_output: data.ai_output,
+                response_time_ms: data.response_time_ms,
+                timestamp: new Date().toISOString(),
+                rating: 0,
+                comment: ''
+            };
+            
+            let localHistory = [];
+            try {
+                localHistory = JSON.parse(localStorage.getItem('summarizer_history') || '[]');
+            } catch (e) {
+                console.error("Failed to parse local history:", e);
+            }
+            localHistory.push(newItem);
+            localStorage.setItem('summarizer_history', JSON.stringify(localHistory));
+            
+            renderOutput(newItem);
             
         } catch (err) {
             console.error(err);
@@ -270,7 +322,8 @@ function renderOutput(data) {
     outSupplierName.innerText = data.supplier_name;
     
     // Format timestamp nicely
-    const date = new Date();
+    const timestampVal = data.timestamp || new Date().toISOString();
+    const date = new Date(timestampVal);
     outTimestamp.innerText = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     
     // Latency
@@ -286,24 +339,28 @@ function renderOutput(data) {
     }
     
     const output = data.ai_output;
-    outSummary.innerText = output.summary;
-    outCustomerImpact.innerText = output.customer_impact;
+    outSummary.innerText = output ? (output.summary || '') : '';
+    outCustomerImpact.innerText = output ? (output.customer_impact || '') : '';
     
     // Affected Orders (Bullet List)
     outAffectedOrders.innerHTML = '';
-    output.affected_orders.forEach(bullet => {
-        const li = document.createElement('li');
-        li.innerText = bullet;
-        outAffectedOrders.appendChild(li);
-    });
+    if (output && output.affected_orders) {
+        output.affected_orders.forEach(bullet => {
+            const li = document.createElement('li');
+            li.innerText = bullet;
+            outAffectedOrders.appendChild(li);
+        });
+    }
     
     // Recommended Actions (Bullet List)
     outRecommendedActions.innerHTML = '';
-    output.recommended_actions.forEach(bullet => {
-        const li = document.createElement('li');
-        li.innerText = bullet;
-        outRecommendedActions.appendChild(li);
-    });
+    if (output && output.recommended_actions) {
+        output.recommended_actions.forEach(bullet => {
+            const li = document.createElement('li');
+            li.innerText = bullet;
+            outRecommendedActions.appendChild(li);
+        });
+    }
 
     // Reset Rating Widget
     resetRating();
@@ -335,36 +392,78 @@ function setupFeedbackSystem() {
 
     // Save Feedback Button Click
     saveFeedbackBtn.addEventListener('click', async () => {
-        if (!currentGenId || currentRating === 0) return;
+        if (currentRating === 0) return;
         
         const comment = feedbackComment.value.trim();
         saveFeedbackBtn.disabled = true;
         saveFeedbackBtn.innerText = 'Saving...';
         
+        // 1. Save locally in localStorage first
+        const adminName = document.getElementById('admin_name').value.trim();
+        const supplierName = document.getElementById('supplier_name').value.trim();
+        const inputs = document.getElementById('supplier_inputs').value.trim();
+        
+        let localHistory = [];
         try {
-            const res = await fetch('/api/feedback', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    generation_id: currentGenId,
-                    rating: currentRating,
-                    comment: comment
-                })
-            });
-            
-            if (!res.ok) throw new Error('Failed to save feedback');
-            
-            showToast('Feedback submitted! Thank you.');
-            
-            // Hide save button
-            saveFeedbackBtn.classList.add('hidden');
+            localHistory = JSON.parse(localStorage.getItem('summarizer_history') || '[]');
         } catch (e) {
             console.error(e);
-            showToast('Failed to submit feedback', true);
-        } finally {
-            saveFeedbackBtn.disabled = false;
-            saveFeedbackBtn.innerText = 'Save';
         }
+        
+        let localItemUpdated = false;
+        localHistory.forEach(item => {
+            if (item.admin_name === adminName && 
+                item.supplier_name === supplierName && 
+                item.supplier_inputs === inputs) {
+                item.rating = currentRating;
+                item.comment = comment;
+                localItemUpdated = true;
+            }
+        });
+        
+        if (localItemUpdated) {
+            try {
+                localStorage.setItem('summarizer_history', JSON.stringify(localHistory));
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        
+        // 2. Try to submit to backend if currentGenId is set
+        let backendSuccess = false;
+        if (currentGenId) {
+            try {
+                const res = await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        generation_id: currentGenId,
+                        rating: currentRating,
+                        comment: comment
+                    })
+                });
+                if (res.ok) {
+                    backendSuccess = true;
+                }
+            } catch (e) {
+                console.error("Backend feedback submit failed:", e);
+            }
+        }
+        
+        if (backendSuccess) {
+            showToast('Feedback submitted! Thank you.');
+        } else {
+            showToast('Feedback saved locally!');
+        }
+        
+        // Hide save button and comment section
+        saveFeedbackBtn.classList.add('hidden');
+        commentSection.classList.add('hidden');
+        saveFeedbackBtn.disabled = false;
+        saveFeedbackBtn.innerText = 'Save';
+        
+        // Refresh history to reflect rating changes
+        loadHistory();
     });
 }
 
@@ -513,108 +612,177 @@ Generated by AI Supply Chain Disruption Alert Summarizer.
     }
 }
 
-// 9. Load History Tab Table
+// // 9. Load History Tab Table
 async function loadHistory() {
     const tableBody = document.getElementById('history-table-body');
     tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Loading history log...</td></tr>';
     
+    let serverHistory = [];
     try {
         const res = await fetch('/api/history');
-        if (!res.ok) throw new Error('Failed to retrieve history');
-        
-        const history = await res.json();
-        tableBody.innerHTML = '';
-        
-        if (history.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No disruptions logged yet. Log your first alert on the dashboard.</td></tr>';
-            return;
+        if (res.ok) {
+            serverHistory = await res.json();
         }
-
-        history.forEach(log => {
-            const row = document.createElement('tr');
-            
-            // Format date
-            const dateStr = new Date(log.timestamp).toLocaleDateString('en-IN', {
-                day: '2-digit', month: 'short', year: 'numeric'
-            });
-            
-            // Rating rendering
-            let starsHtml = '';
-            if (log.rating) {
-                for (let i = 1; i <= 5; i++) {
-                    if (i <= log.rating) {
-                        starsHtml += '<i class="fa-solid fa-star" style="color: var(--warning); margin-right: 2px;"></i>';
-                    } else {
-                        starsHtml += '<i class="fa-regular fa-star" style="color: var(--text-muted); margin-right: 2px;"></i>';
-                    }
-                }
-            } else {
-                starsHtml = '<span style="color: var(--text-muted); font-size: 0.8rem;">Unrated</span>';
-            }
-
-            row.innerHTML = `
-                <td><strong>${dateStr}</strong></td>
-                <td>${log.supplier_name}</td>
-                <td>${log.admin_name}</td>
-                <td><div class="history-preview">${log.ai_output.summary}</div></td>
-                <td><div class="history-rating">${starsHtml}</div></td>
-                <td>
-                    <div class="history-actions">
-                        <button class="btn btn-secondary btn-xs view-log-btn" data-id="${log.id}">
-                            <i class="fa-solid fa-eye"></i> View
-                        </button>
-                        <button class="btn btn-secondary btn-xs download-pdf-log-btn" data-id="${log.id}">
-                            <i class="fa-solid fa-file-pdf"></i> PDF
-                        </button>
-                    </div>
-                </td>
-            `;
-            
-            // Click to view detail
-            row.querySelector('.view-log-btn').addEventListener('click', () => {
-                viewGenerationDetails(log.id);
-            });
-
-            // Click to download PDF directly
-            row.querySelector('.download-pdf-log-btn').addEventListener('click', () => {
-                downloadPDFFromLog(log);
-            });
-
-            tableBody.appendChild(row);
-        });
     } catch (e) {
-        console.error(e);
-        tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--error);">Error retrieving history logs</td></tr>';
+        console.error("Failed to fetch history from server:", e);
     }
+    
+    // Load local history
+    let localHistory = [];
+    try {
+        localHistory = JSON.parse(localStorage.getItem('summarizer_history') || '[]');
+    } catch (e) {
+        console.error("Failed to parse local history:", e);
+    }
+    
+    // Merge server and local history
+    const mergedMap = new Map();
+    
+    // 1. Add all local history items first
+    localHistory.forEach(item => {
+        if (!item.admin_name || !item.supplier_name || !item.supplier_inputs) return;
+        const sig = `${item.admin_name.trim()}|${item.supplier_name.trim()}|${item.supplier_inputs.trim()}`;
+        mergedMap.set(sig, item);
+    });
+    
+    // 2. Merge with server history items
+    serverHistory.forEach(item => {
+        if (!item.admin_name || !item.supplier_name || !item.supplier_inputs) return;
+        const sig = `${item.admin_name.trim()}|${item.supplier_name.trim()}|${item.supplier_inputs.trim()}`;
+        if (mergedMap.has(sig)) {
+            const localItem = mergedMap.get(sig);
+            // Merge fields
+            mergedMap.set(sig, {
+                ...localItem,
+                ...item, // server fields override local fields
+                id: item.id || localItem.id,
+                // keep rating & comment if local has it but server doesn't, or vice-versa
+                rating: item.rating || localItem.rating || 0,
+                comment: item.comment || localItem.comment || '',
+                timestamp: item.timestamp || localItem.timestamp
+            });
+        } else {
+            mergedMap.set(sig, item);
+        }
+    });
+    
+    // Convert map back to list
+    mergedHistoryList = Array.from(mergedMap.values());
+    
+    // Ensure all items have a unique UI uid and valid timestamp
+    mergedHistoryList.forEach((item, index) => {
+        if (!item.uid) {
+            item.uid = 'log_' + Math.random().toString(36).substr(2, 9) + '_' + (item.id || index);
+        }
+        if (!item.timestamp) {
+            item.timestamp = new Date().toISOString();
+        }
+    });
+    
+    // Sort by timestamp descending
+    mergedHistoryList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
+    // Update local storage to keep it synchronized
+    try {
+        localStorage.setItem('summarizer_history', JSON.stringify(mergedHistoryList));
+    } catch (e) {
+        console.error("Failed to write to localStorage:", e);
+    }
+    
+    // Now render the table
+    tableBody.innerHTML = '';
+    
+    if (mergedHistoryList.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No disruptions logged yet. Log your first alert on the dashboard.</td></tr>';
+        return;
+    }
+    
+    mergedHistoryList.forEach(log => {
+        const row = document.createElement('tr');
+        
+        // Format date
+        const dateStr = new Date(log.timestamp).toLocaleDateString('en-IN', {
+            day: '2-digit', month: 'short', year: 'numeric'
+        });
+        
+        // Rating rendering
+        let starsHtml = '';
+        if (log.rating) {
+            for (let i = 1; i <= 5; i++) {
+                if (i <= log.rating) {
+                    starsHtml += '<i class="fa-solid fa-star" style="color: var(--warning); margin-right: 2px;"></i>';
+                } else {
+                    starsHtml += '<i class="fa-regular fa-star" style="color: var(--text-muted); margin-right: 2px;"></i>';
+                }
+            }
+        } else {
+            starsHtml = '<span style="color: var(--text-muted); font-size: 0.8rem;">Unrated</span>';
+        }
+        
+        const summaryPreview = log.ai_output && log.ai_output.summary ? log.ai_output.summary : '';
+        
+        row.innerHTML = `
+            <td><strong>${dateStr}</strong></td>
+            <td>${log.supplier_name}</td>
+            <td>${log.admin_name}</td>
+            <td><div class="history-preview">${summaryPreview}</div></td>
+            <td><div class="history-rating">${starsHtml}</div></td>
+            <td>
+                <div class="history-actions">
+                    <button class="btn btn-secondary btn-xs view-log-btn" data-uid="${log.uid}">
+                        <i class="fa-solid fa-eye"></i> View
+                    </button>
+                    <button class="btn btn-secondary btn-xs download-pdf-log-btn" data-uid="${log.uid}">
+                        <i class="fa-solid fa-file-pdf"></i> PDF
+                    </button>
+                </div>
+            </td>
+        `;
+        
+        // Click to view detail
+        row.querySelector('.view-log-btn').addEventListener('click', () => {
+            viewGenerationDetails(log.uid);
+        });
+        
+        // Click to download PDF directly
+        row.querySelector('.download-pdf-log-btn').addEventListener('click', () => {
+            downloadPDFFromLog(log);
+        });
+        
+        tableBody.appendChild(row);
+    });
 }
 
 // Retrieve dynamic generation details and render on Dashboard
-async function viewGenerationDetails(id) {
+async function viewGenerationDetails(uid) {
     try {
-        const res = await fetch(`/api/history/${id}`);
-        if (!res.ok) throw new Error('Could not retrieve details');
-        
-        const data = await res.json();
+        // Find the item in our local merged list
+        const item = mergedHistoryList.find(x => x.uid === uid);
+        if (!item) throw new Error('Alert not found in history');
         
         // Render
-        renderOutput(data);
+        renderOutput(item);
         
         // Fill form fields with inputs
-        document.getElementById('admin_name').value = data.admin_name;
-        document.getElementById('supplier_name').value = data.supplier_name;
-        document.getElementById('supplier_inputs').value = data.supplier_inputs;
-        charCurrent.innerText = data.supplier_inputs.length;
+        document.getElementById('admin_name').value = item.admin_name;
+        document.getElementById('supplier_name').value = item.supplier_name;
+        document.getElementById('supplier_inputs').value = item.supplier_inputs;
+        charCurrent.innerText = item.supplier_inputs.length;
         
         // Switch to Dashboard Tab
         const dashBtn = document.querySelector('.nav-btn[data-tab="dashboard-tab"]');
-        dashBtn.click();
+        if (dashBtn) {
+            dashBtn.click();
+        }
         
         // Apply existing rating values if present
-        if (data.rating) {
-            currentRating = data.rating;
-            highlightStars(data.rating, false);
+        if (item.rating) {
+            currentRating = item.rating;
+            highlightStars(item.rating, false);
             commentSection.classList.remove('hidden');
-            feedbackComment.value = data.comment || '';
+            feedbackComment.value = item.comment || '';
+        } else {
+            resetRating();
         }
         
     } catch (e) {
@@ -633,14 +801,21 @@ function downloadPDFFromLog(log) {
     tempDiv.style.fontFamily = 'Inter, sans-serif';
     
     let ordersList = '';
-    log.ai_output.affected_orders.forEach(b => {
-        ordersList += `<li style="margin-bottom: 8px;">${b}</li>`;
-    });
+    if (log.ai_output && log.ai_output.affected_orders) {
+        log.ai_output.affected_orders.forEach(b => {
+            ordersList += `<li style="margin-bottom: 8px;">${b}</li>`;
+        });
+    }
     
     let actionsList = '';
-    log.ai_output.recommended_actions.forEach(b => {
-        actionsList += `<li style="margin-bottom: 8px;">${b}</li>`;
-    });
+    if (log.ai_output && log.ai_output.recommended_actions) {
+        log.ai_output.recommended_actions.forEach(b => {
+            actionsList += `<li style="margin-bottom: 8px;">${b}</li>`;
+        });
+    }
+
+    const summaryText = log.ai_output ? (log.ai_output.summary || '') : '';
+    const impactText = log.ai_output ? (log.ai_output.customer_impact || '') : '';
 
     tempDiv.innerHTML = `
         <div style="text-align: center; margin-bottom: 25px;">
@@ -664,12 +839,12 @@ function downloadPDFFromLog(log) {
         
         <div style="margin-bottom: 20px;">
             <h4 style="font-family: Outfit, sans-serif; font-size: 1rem; color: #0f172a; border-bottom: 1px solid #cbd5e1; padding-bottom: 6px; margin: 0 0 10px 0;">1. Disruption Summary</h4>
-            <p style="font-size: 0.95rem; color: #334155; line-height: 1.6; margin: 0;">${log.ai_output.summary}</p>
+            <p style="font-size: 0.95rem; color: #334155; line-height: 1.6; margin: 0;">${summaryText}</p>
         </div>
         
         <div style="margin-bottom: 20px;">
             <h4 style="font-family: Outfit, sans-serif; font-size: 1rem; color: #0f172a; border-bottom: 1px solid #cbd5e1; padding-bottom: 6px; margin: 0 0 10px 0;">2. Customer Impact Analysis</h4>
-            <p style="font-size: 0.95rem; color: #334155; line-height: 1.6; margin: 0;">${log.ai_output.customer_impact}</p>
+            <p style="font-size: 0.95rem; color: #334155; line-height: 1.6; margin: 0;">${impactText}</p>
         </div>
         
         <div style="margin-bottom: 20px;">
@@ -697,13 +872,97 @@ function downloadPDFFromLog(log) {
     });
 }
 
+function calculateLocalAnalytics(historyList) {
+    const total_generations = historyList.length;
+    
+    let sumRating = 0;
+    let countRating = 0;
+    let sumResponseTime = 0;
+    const suppliersSet = new Set();
+    
+    const dailyCounts = {}; // date -> count
+    const dailyRatings = {}; // date -> { sum, count }
+    const supplierCounts = {}; // supplier -> count
+    
+    historyList.forEach(item => {
+        if (item.rating && item.rating > 0) {
+            sumRating += item.rating;
+            countRating++;
+        }
+        if (item.response_time_ms) {
+            sumResponseTime += item.response_time_ms;
+        }
+        if (item.supplier_name) {
+            const sName = item.supplier_name.trim();
+            suppliersSet.add(sName);
+            supplierCounts[sName] = (supplierCounts[sName] || 0) + 1;
+        }
+        
+        if (item.timestamp) {
+            const dateStr = new Date(item.timestamp).toISOString().split('T')[0];
+            dailyCounts[dateStr] = (dailyCounts[dateStr] || 0) + 1;
+            
+            if (item.rating && item.rating > 0) {
+                if (!dailyRatings[dateStr]) {
+                    dailyRatings[dateStr] = { sum: 0, count: 0 };
+                }
+                dailyRatings[dateStr].sum += item.rating;
+                dailyRatings[dateStr].count += 1;
+            }
+        }
+    });
+    
+    const average_rating = countRating > 0 ? (sumRating / countRating) : 0.0;
+    const average_response_time = total_generations > 0 ? (sumResponseTime / total_generations) : 0;
+    const unique_suppliers = suppliersSet.size;
+    
+    // Daily volume for the last 7 calendar days
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        last7Days.push(d.toISOString().split('T')[0]);
+    }
+    
+    const daily_volume = last7Days.map(date => ({
+        date: date,
+        count: dailyCounts[date] || 0
+    }));
+    
+    // Quality trends: average rating for days that actually have ratings
+    const quality_trends = Object.keys(dailyRatings)
+        .sort()
+        .map(date => ({
+            date: date,
+            avg_rating: parseFloat((dailyRatings[date].sum / dailyRatings[date].count).toFixed(2))
+        }))
+        .slice(-7); // take last 7 rated days
+        
+    const top_suppliers = Object.keys(supplierCounts)
+        .map(s => ({ supplier: s, count: supplierCounts[s] }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+        
+    return {
+        total_generations: total_generations,
+        average_rating: average_rating,
+        average_response_time_ms: Math.round(average_response_time),
+        unique_suppliers: unique_suppliers,
+        daily_volume: daily_volume,
+        quality_trends: quality_trends,
+        top_suppliers: top_suppliers
+    };
+}
+
 // 10. Load Admin Analytics Tab
 async function loadAnalytics() {
     try {
-        const res = await fetch('/api/admin/analytics');
-        if (!res.ok) throw new Error('Could not retrieve analytics');
+        // Ensure history is loaded and merged list populated
+        if (!mergedHistoryList || mergedHistoryList.length === 0) {
+            await loadHistory();
+        }
         
-        const data = await res.json();
+        const data = calculateLocalAnalytics(mergedHistoryList);
         
         // Update KPI Counters in DOM
         document.getElementById('stat-total-summaries').innerText = data.total_generations;
