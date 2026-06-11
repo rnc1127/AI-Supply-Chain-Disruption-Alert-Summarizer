@@ -3,6 +3,11 @@ import urllib.request
 import urllib.error
 import json
 import time
+import sys
+
+# Ensure the backend directory is in the python search path for Vercel deployment
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from flask import Flask, request, jsonify, send_from_directory
 import db_helper
 
