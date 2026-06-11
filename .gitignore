@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.log
+backend/database.db
+backend/test_database.db
+tests/test_database.db
+.env
+.gemini/
+.system_generated/
+scratch/
