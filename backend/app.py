@@ -208,12 +208,19 @@ def generate():
     
     # Save to DB
     conn = db_helper.get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO generations (admin_name, supplier_name, supplier_inputs, ai_output, response_time_ms)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (admin, supplier, inputs, ai_output_str, elapsed_ms))
-    gen_id = cursor.lastrowid
+    cursor = db_helper.get_cursor(conn)
+    if db_helper.is_postgres():
+        cursor.execute('''
+            INSERT INTO generations (admin_name, supplier_name, supplier_inputs, ai_output, response_time_ms)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+        ''', (admin, supplier, inputs, ai_output_str, elapsed_ms))
+        gen_id = cursor.fetchone()[0]
+    else:
+        cursor.execute('''
+            INSERT INTO generations (admin_name, supplier_name, supplier_inputs, ai_output, response_time_ms)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (admin, supplier, inputs, ai_output_str, elapsed_ms))
+        gen_id = cursor.lastrowid
     conn.commit()
     conn.close()
     
@@ -231,7 +238,7 @@ def generate():
 @app.route('/api/history', methods=['GET'])
 def get_history():
     conn = db_helper.get_db_connection()
-    cursor = conn.cursor()
+    cursor = db_helper.get_cursor(conn)
     cursor.execute('''
         SELECT g.*, f.rating, f.comment
         FROM generations g
@@ -255,7 +262,7 @@ def get_history():
             "supplier_inputs": row['supplier_inputs'],
             "ai_output": ai_output_dict,
             "response_time_ms": row['response_time_ms'],
-            "timestamp": row['timestamp'],
+            "timestamp": row['timestamp'].isoformat() if hasattr(row['timestamp'], 'isoformat') else row['timestamp'],
             "rating": row['rating'],
             "comment": row['comment']
         })
@@ -264,12 +271,13 @@ def get_history():
 @app.route('/api/history/<int:gen_id>', methods=['GET'])
 def get_history_detail(gen_id):
     conn = db_helper.get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
+    cursor = db_helper.get_cursor(conn)
+    p = '%s' if db_helper.is_postgres() else '?'
+    cursor.execute(f'''
         SELECT g.*, f.rating, f.comment
         FROM generations g
         LEFT JOIN feedback f ON g.id = f.generation_id
-        WHERE g.id = ?
+        WHERE g.id = {p}
     ''', (gen_id,))
     row = cursor.fetchone()
     conn.close()
@@ -289,7 +297,7 @@ def get_history_detail(gen_id):
         "supplier_inputs": row['supplier_inputs'],
         "ai_output": ai_output_dict,
         "response_time_ms": row['response_time_ms'],
-        "timestamp": row['timestamp'],
+        "timestamp": row['timestamp'].isoformat() if hasattr(row['timestamp'], 'isoformat') else row['timestamp'],
         "rating": row['rating'],
         "comment": row['comment']
     })
@@ -308,26 +316,27 @@ def submit_feedback():
         return jsonify({"error": "Rating must be an integer between 1 and 5"}), 400
         
     conn = db_helper.get_db_connection()
-    cursor = conn.cursor()
+    cursor = db_helper.get_cursor(conn)
+    p = '%s' if db_helper.is_postgres() else '?'
     
-    cursor.execute('SELECT id FROM generations WHERE id = ?', (gen_id,))
+    cursor.execute(f'SELECT id FROM generations WHERE id = {p}', (gen_id,))
     if not cursor.fetchone():
         conn.close()
         return jsonify({"error": "Generation ID does not exist"}), 404
         
-    cursor.execute('SELECT id FROM feedback WHERE generation_id = ?', (gen_id,))
+    cursor.execute(f'SELECT id FROM feedback WHERE generation_id = {p}', (gen_id,))
     existing = cursor.fetchone()
     
     if existing:
-        cursor.execute('''
+        cursor.execute(f'''
             UPDATE feedback
-            SET rating = ?, comment = ?, timestamp = CURRENT_TIMESTAMP
-            WHERE generation_id = ?
+            SET rating = {p}, comment = {p}, timestamp = CURRENT_TIMESTAMP
+            WHERE generation_id = {p}
         ''', (rating, comment, gen_id))
     else:
-        cursor.execute('''
+        cursor.execute(f'''
             INSERT INTO feedback (generation_id, rating, comment)
-            VALUES (?, ?, ?)
+            VALUES ({p}, {p}, {p})
         ''', (gen_id, rating, comment))
         
     conn.commit()
@@ -338,42 +347,61 @@ def submit_feedback():
 @app.route('/api/admin/analytics', methods=['GET'])
 def get_analytics():
     conn = db_helper.get_db_connection()
-    cursor = conn.cursor()
+    cursor = db_helper.get_cursor(conn)
     
     cursor.execute('SELECT COUNT(*) FROM generations')
     total_generations = cursor.fetchone()[0]
     
     cursor.execute('SELECT AVG(rating) FROM feedback')
     avg_rating_row = cursor.fetchone()
-    avg_rating = round(avg_rating_row[0], 2) if avg_rating_row[0] is not None else 0.0
+    avg_rating = round(float(avg_rating_row[0]), 2) if avg_rating_row[0] is not None else 0.0
     
     cursor.execute('SELECT AVG(response_time_ms) FROM generations')
     avg_time_row = cursor.fetchone()
-    avg_response_time = round(avg_time_row[0], 0) if avg_time_row[0] is not None else 0
+    avg_response_time = round(float(avg_time_row[0]), 0) if avg_time_row[0] is not None else 0
     
     cursor.execute('SELECT COUNT(DISTINCT supplier_name) FROM generations')
     unique_suppliers = cursor.fetchone()[0]
     
     # Daily generation volume (last 7 days)
-    cursor.execute('''
-        SELECT strftime('%Y-%m-%d', timestamp) as date, COUNT(*) as count 
-        FROM generations 
-        GROUP BY date 
-        ORDER BY date ASC 
-        LIMIT 7
-    ''')
+    if db_helper.is_postgres():
+        cursor.execute('''
+            SELECT TO_CHAR(timestamp, 'YYYY-MM-DD') as date, COUNT(*) as count 
+            FROM generations 
+            GROUP BY date 
+            ORDER BY date ASC 
+            LIMIT 7
+        ''')
+    else:
+        cursor.execute('''
+            SELECT strftime('%Y-%m-%d', timestamp) as date, COUNT(*) as count 
+            FROM generations 
+            GROUP BY date 
+            ORDER BY date ASC 
+            LIMIT 7
+        ''')
     daily_volume = [{"date": r['date'], "count": r['count']} for r in cursor.fetchall()]
     
     # Quality trends over time (average rating per day)
-    cursor.execute('''
-        SELECT strftime('%Y-%m-%d', g.timestamp) as date, AVG(f.rating) as avg_rating
-        FROM generations g
-        JOIN feedback f ON g.id = f.generation_id
-        GROUP BY date
-        ORDER BY date ASC
-        LIMIT 7
-    ''')
-    quality_trends = [{"date": r['date'], "avg_rating": round(r['avg_rating'], 2)} for r in cursor.fetchall()]
+    if db_helper.is_postgres():
+        cursor.execute('''
+            SELECT TO_CHAR(g.timestamp, 'YYYY-MM-DD') as date, AVG(f.rating) as avg_rating
+            FROM generations g
+            JOIN feedback f ON g.id = f.generation_id
+            GROUP BY date
+            ORDER BY date ASC
+            LIMIT 7
+        ''')
+    else:
+        cursor.execute('''
+            SELECT strftime('%Y-%m-%d', g.timestamp) as date, AVG(f.rating) as avg_rating
+            FROM generations g
+            JOIN feedback f ON g.id = f.generation_id
+            GROUP BY date
+            ORDER BY date ASC
+            LIMIT 7
+        ''')
+    quality_trends = [{"date": r['date'], "avg_rating": round(float(r['avg_rating']), 2)} for r in cursor.fetchall()]
     
     # Disruption by supplier
     cursor.execute('''
@@ -400,7 +428,7 @@ def get_analytics():
 @app.route('/api/templates', methods=['GET'])
 def get_templates():
     conn = db_helper.get_db_connection()
-    cursor = conn.cursor()
+    cursor = db_helper.get_cursor(conn)
     cursor.execute('SELECT * FROM presets')
     rows = cursor.fetchall()
     conn.close()
@@ -427,17 +455,19 @@ def add_template():
         
     try:
         conn = db_helper.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
+        cursor = db_helper.get_cursor(conn)
+        p = '%s' if db_helper.is_postgres() else '?'
+        cursor.execute(f'''
             INSERT INTO presets (title, admin_name, supplier_name, inputs)
-            VALUES (?, ?, ?, ?)
+            VALUES ({p}, {p}, {p}, {p})
         ''', (title, admin, supplier, inputs))
         conn.commit()
         conn.close()
         return jsonify({"success": True, "message": "Preset added successfully"})
-    except sqlite3.IntegrityError:
-        return jsonify({"error": "Preset title must be unique"}), 400
     except Exception as e:
+        err_name = e.__class__.__name__
+        if err_name in ('IntegrityError', 'sqlite3.IntegrityError', 'psycopg2.IntegrityError'):
+            return jsonify({"error": "Preset title must be unique"}), 400
         return jsonify({"error": str(e)}), 500
 
 @app.route('/')
