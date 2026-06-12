@@ -34,6 +34,104 @@ const DEFAULT_PRESETS = [
     }
 ];
 
+// IndexedDB configuration for unlimited local storage
+const DB_NAME = 'AlertSummarizerDB';
+const STORE_NAME = 'HistoryStore';
+const DB_VERSION = 1;
+
+function openDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME, { keyPath: 'uid' });
+            }
+        };
+        request.onsuccess = (e) => resolve(e.target.result);
+        request.onerror = (e) => reject(e.target.error);
+    });
+}
+
+async function getLocalHistory() {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(STORE_NAME, 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result || []);
+            request.onerror = () => reject(request.error);
+        });
+    } catch (e) {
+        console.error("IndexedDB error:", e);
+        return [];
+    }
+}
+
+async function saveLocalHistoryItem(item) {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.put(item);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    } catch (e) {
+        console.error("IndexedDB error saving item:", e);
+    }
+}
+
+async function saveLocalHistoryList(list) {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            
+            store.clear();
+            list.forEach(item => {
+                if (item.uid) {
+                    store.put(item);
+                }
+            });
+            
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    } catch (e) {
+        console.error("IndexedDB error saving list:", e);
+    }
+}
+
+// Legacy LocalStorage migration to IndexedDB
+async function migrateLocalStorageToIndexedDB() {
+    try {
+        const legacyData = localStorage.getItem('summarizer_history');
+        if (legacyData) {
+            const list = JSON.parse(legacyData);
+            if (Array.isArray(list) && list.length > 0) {
+                console.log(`Migrating ${list.length} items from localStorage to IndexedDB...`);
+                list.forEach((item, idx) => {
+                    if (!item.uid) {
+                        const sig = item.admin_name && item.supplier_name && item.supplier_inputs
+                            ? `${item.admin_name.trim()}|${item.supplier_name.trim()}|${item.supplier_inputs.trim()}`
+                            : `item_${Date.now()}_${idx}`;
+                        item.uid = btoa(unescape(encodeURIComponent(sig)));
+                    }
+                });
+                await saveLocalHistoryList(list);
+                console.log("Migration completed successfully!");
+            }
+            localStorage.removeItem('summarizer_history');
+        }
+    } catch (e) {
+        console.error("Migration from localStorage failed:", e);
+    }
+}
+
 // DOM Elements
 const navButtons = document.querySelectorAll('.nav-btn');
 const tabContents = document.querySelectorAll('.tab-content');
@@ -81,7 +179,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // App Initialization
-function initApp() {
+async function initApp() {
+    await migrateLocalStorageToIndexedDB();
     setupTabSwitching();
     setupThemeToggle();
     setupTextareaCounter();
@@ -90,7 +189,7 @@ function initApp() {
     setupFeedbackSystem();
     setupOutputActions();
     checkAPIStatus();
-    loadHistory();
+    await loadHistory();
     
     // Check for query parameters for deep linking
     const urlParams = new URLSearchParams(window.location.search);
@@ -293,14 +392,9 @@ function setupFormSubmission() {
                 comment: ''
             };
             
-            let localHistory = [];
-            try {
-                localHistory = JSON.parse(localStorage.getItem('summarizer_history') || '[]');
-            } catch (e) {
-                console.error("Failed to parse local history:", e);
-            }
-            localHistory.push(newItem);
-            localStorage.setItem('summarizer_history', JSON.stringify(localHistory));
+            // Generate unique UI uid
+            newItem.uid = 'log_' + Math.random().toString(36).substr(2, 9) + '_' + (newItem.id || Date.now());
+            await saveLocalHistoryItem(newItem);
             
             // Switch right pane view to output card
             if (loadingState) loadingState.classList.add('hidden');
@@ -406,17 +500,12 @@ function setupFeedbackSystem() {
         saveFeedbackBtn.disabled = true;
         saveFeedbackBtn.innerText = 'Saving...';
         
-        // 1. Save locally in localStorage first
+        // 1. Save locally in IndexedDB first
         const adminName = document.getElementById('admin_name').value.trim();
         const supplierName = document.getElementById('supplier_name').value.trim();
         const inputs = document.getElementById('supplier_inputs').value.trim();
         
-        let localHistory = [];
-        try {
-            localHistory = JSON.parse(localStorage.getItem('summarizer_history') || '[]');
-        } catch (e) {
-            console.error(e);
-        }
+        let localHistory = await getLocalHistory();
         
         let localItemUpdated = false;
         localHistory.forEach(item => {
@@ -430,11 +519,7 @@ function setupFeedbackSystem() {
         });
         
         if (localItemUpdated) {
-            try {
-                localStorage.setItem('summarizer_history', JSON.stringify(localHistory));
-            } catch (e) {
-                console.error(e);
-            }
+            await saveLocalHistoryList(localHistory);
         }
         
         // 2. Try to submit to backend if currentGenId is set
@@ -638,12 +723,7 @@ async function loadHistory() {
     }
     
     // Load local history
-    let localHistory = [];
-    try {
-        localHistory = JSON.parse(localStorage.getItem('summarizer_history') || '[]');
-    } catch (e) {
-        console.error("Failed to parse local history:", e);
-    }
+    let localHistory = await getLocalHistory();
     
     // Merge server and local history
     const mergedMap = new Map();
@@ -693,11 +773,7 @@ async function loadHistory() {
     mergedHistoryList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     
     // Update local storage to keep it synchronized
-    try {
-        localStorage.setItem('summarizer_history', JSON.stringify(mergedHistoryList));
-    } catch (e) {
-        console.error("Failed to write to localStorage:", e);
-    }
+    await saveLocalHistoryList(mergedHistoryList);
     
     // Now render the table
     tableBody.innerHTML = '';
