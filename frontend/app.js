@@ -803,32 +803,55 @@ async function loadHistory() {
     // Merge server and local history
     const mergedMap = new Map();
     
-    // 1. Add all local history items first
-    localHistory.forEach(item => {
-        if (!item.admin_name || !item.supplier_name || !item.supplier_inputs) return;
-        const sig = `${item.admin_name.trim()}|${item.supplier_name.trim()}|${item.supplier_inputs.trim()}`;
-        mergedMap.set(sig, item);
+    // 1. Index server items by ID and signature
+    const serverMapById = new Map();
+    const serverMapBySig = new Map();
+    serverHistory.forEach(item => {
+        if (item.id) {
+            serverMapById.set(item.id, item);
+        }
+        if (item.admin_name && item.supplier_name && item.supplier_inputs) {
+            const sig = `${item.admin_name.trim()}|${item.supplier_name.trim()}|${item.supplier_inputs.trim()}`;
+            serverMapBySig.set(sig, item);
+        }
+    });
+
+    // 2. Add local history items, merging with server data where appropriate
+    localHistory.forEach(localItem => {
+        if (!localItem.admin_name || !localItem.supplier_name || !localItem.supplier_inputs) return;
+        const sig = `${localItem.admin_name.trim()}|${localItem.supplier_name.trim()}|${localItem.supplier_inputs.trim()}`;
+        
+        let serverMatch = null;
+        if (localItem.id && serverMapById.has(localItem.id)) {
+            serverMatch = serverMapById.get(localItem.id);
+        } else if (serverMapBySig.has(sig)) {
+            serverMatch = serverMapBySig.get(sig);
+        }
+        
+        if (serverMatch) {
+            const mergedItem = {
+                ...localItem,
+                ...serverMatch,
+                id: serverMatch.id || localItem.id,
+                rating: serverMatch.rating || localItem.rating || 0,
+                comment: serverMatch.comment || localItem.comment || '',
+                timestamp: serverMatch.timestamp || localItem.timestamp
+            };
+            const key = mergedItem.id ? `server_${mergedItem.id}` : `local_${localItem.uid || Math.random()}`;
+            mergedMap.set(key, mergedItem);
+            
+            // Remove from server maps to avoid adding duplicates in step 3
+            if (serverMatch.id) serverMapById.delete(serverMatch.id);
+            serverMapBySig.delete(sig);
+        } else {
+            const key = localItem.id ? `server_${localItem.id}` : `local_${localItem.uid || Math.random()}`;
+            mergedMap.set(key, localItem);
+        }
     });
     
-    // 2. Merge with server history items
-    serverHistory.forEach(item => {
-        if (!item.admin_name || !item.supplier_name || !item.supplier_inputs) return;
-        const sig = `${item.admin_name.trim()}|${item.supplier_name.trim()}|${item.supplier_inputs.trim()}`;
-        if (mergedMap.has(sig)) {
-            const localItem = mergedMap.get(sig);
-            // Merge fields
-            mergedMap.set(sig, {
-                ...localItem,
-                ...item, // server fields override local fields
-                id: item.id || localItem.id,
-                // keep rating & comment if local has it but server doesn't, or vice-versa
-                rating: item.rating || localItem.rating || 0,
-                comment: item.comment || localItem.comment || '',
-                timestamp: item.timestamp || localItem.timestamp
-            });
-        } else {
-            mergedMap.set(sig, item);
-        }
+    // 3. Add remaining server items that aren't in local history
+    serverMapById.forEach((serverItem) => {
+        mergedMap.set(`server_${serverItem.id}`, serverItem);
     });
     
     // Convert map back to list
