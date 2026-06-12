@@ -1098,3 +1098,63 @@ body {
     background: radial-gradient(circle at 50% 50%, #0d162a 0%, #060910 100%) !important;
 }
 
+/* Storage Info Widget */
+.storage-info-container {
+    background: rgba(15, 23, 42, 0.45);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-sm);
+    padding: 12px 15px;
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 0.85rem;
+}
+
+body.light-theme .storage-info-container {
+    background: rgba(255, 255, 255, 0.45);
+}
+
+.storage-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-secondary);
+}
+
+.storage-meta i {
+    color: var(--accent-indigo);
+    margin-right: 5px;
+}
+
+.storage-progress-bar {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+body.light-theme .storage-progress-bar {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.storage-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-indigo), var(--accent-violet));
+    width: 0%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.storage-meta .badge-outline {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--accent-indigo);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    font-weight: 500;
+}
+
+

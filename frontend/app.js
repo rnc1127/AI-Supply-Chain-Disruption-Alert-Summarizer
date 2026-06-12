@@ -1,3 +1,5 @@
+import { BrowserStorageManager } from './storage_manager.js';
+
 // Global State variables
 let currentGenId = null;
 let currentRating = 0;
@@ -39,6 +41,36 @@ const DB_NAME = 'AlertSummarizerDB';
 const STORE_NAME = 'HistoryStore';
 const DB_VERSION = 1;
 
+// Instantiate the browser storage strategy manager
+const storageManager = new BrowserStorageManager(DB_NAME);
+
+// Quota UI updater function
+async function updateStorageQuotaUI() {
+    try {
+        const quota = await storageManager.getQuotaDetails();
+        console.info(`[StorageManager] Quota details: Usage: ${quota.usageMB} MB / Total: ${quota.totalQuotaGB} GB (${quota.percentUsed}% used). Persistent: ${await storageManager.isPersisted()}`);
+        
+        const statusTextEl = document.getElementById('storage-status-text');
+        const progressFillEl = document.getElementById('storage-progress-fill');
+        
+        if (statusTextEl) {
+            if (quota.supported) {
+                const isPersisted = await storageManager.isPersisted();
+                const persistenceLabel = isPersisted ? "Persistent" : "Best-effort";
+                statusTextEl.innerHTML = `<i class="fa-solid fa-hard-drive"></i> Local Storage: ${quota.usageMB} MB / ${quota.totalQuotaGB} GB (${quota.percentUsed}% used) <span class="badge-outline">${persistenceLabel}</span>`;
+            } else {
+                statusTextEl.innerHTML = `<i class="fa-solid fa-hard-drive"></i> Local Storage: Running (best-effort/fallback)`;
+            }
+        }
+        
+        if (progressFillEl && quota.supported) {
+            progressFillEl.style.width = `${Math.min(100, Math.max(0.5, quota.percentUsed))}%`;
+        }
+    } catch (e) {
+        console.error("[StorageManager] Error updating storage quota UI:", e);
+    }
+}
+
 function openDB() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -72,37 +104,71 @@ async function getLocalHistory() {
 async function saveLocalHistoryItem(item) {
     try {
         const db = await openDB();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction(STORE_NAME, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME);
-            const request = store.put(item);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
+        const success = await storageManager.safeWrite(db, STORE_NAME, item, (err) => {
+            showToast('Warning: Local storage full. Please free up some disk space!', true);
         });
+        if (success) {
+            await updateStorageQuotaUI();
+        }
+        return success;
     } catch (e) {
         console.error("IndexedDB error saving item:", e);
+        return false;
     }
 }
 
 async function saveLocalHistoryList(list) {
     try {
         const db = await openDB();
-        return new Promise((resolve, reject) => {
+        const success = await new Promise((resolve) => {
             const transaction = db.transaction(STORE_NAME, 'readwrite');
             const store = transaction.objectStore(STORE_NAME);
+            
+            let quotaExceeded = false;
+            
+            transaction.onerror = (event) => {
+                event.preventDefault();
+                const error = transaction.error || event.target.error;
+                if (error && (error.name === 'QuotaExceededError' || error.code === DOMException.QUOTA_EXCEEDED_ERR)) {
+                    quotaExceeded = true;
+                    console.error("[StorageManager] QuotaExceededError during transaction write.");
+                    showToast('Warning: Local storage full. Please free up some disk space!', true);
+                } else {
+                    console.error("IndexedDB transaction error saving list:", error);
+                }
+                resolve(false);
+            };
+            
+            transaction.oncomplete = () => {
+                resolve(!quotaExceeded);
+            };
             
             store.clear();
             list.forEach(item => {
                 if (item.uid) {
-                    store.put(item);
+                    try {
+                        const req = store.put(item);
+                        req.onerror = (e) => {
+                            const error = e.target.error;
+                            if (error && (error.name === 'QuotaExceededError' || error.code === DOMException.QUOTA_EXCEEDED_ERR)) {
+                                quotaExceeded = true;
+                                console.error("[StorageManager] QuotaExceededError on store.put during list save.");
+                                showToast('Warning: Local storage full. Please free up some disk space!', true);
+                            }
+                        };
+                    } catch (err) {
+                        console.error("Error putting item in store:", err);
+                    }
                 }
             });
-            
-            transaction.oncomplete = () => resolve();
-            transaction.onerror = () => reject(transaction.error);
         });
+        if (success) {
+            await updateStorageQuotaUI();
+        }
+        return success;
     } catch (e) {
         console.error("IndexedDB error saving list:", e);
+        return false;
     }
 }
 
@@ -181,6 +247,15 @@ document.addEventListener('DOMContentLoaded', () => {
 // App Initialization
 async function initApp() {
     await migrateLocalStorageToIndexedDB();
+    
+    // Storage manager initialization
+    try {
+        await storageManager.requestPersistence();
+        await updateStorageQuotaUI();
+    } catch (err) {
+        console.error("Failed to initialize storage manager:", err);
+    }
+
     setupTabSwitching();
     setupThemeToggle();
     setupTextareaCounter();
@@ -1225,6 +1300,7 @@ function renderSupplierChart(supplierData) {
 // Refresh History Event Link
 document.getElementById('refresh-history-btn').addEventListener('click', () => {
     loadHistory();
+    updateStorageQuotaUI();
     showToast('History refreshed!');
 });
 

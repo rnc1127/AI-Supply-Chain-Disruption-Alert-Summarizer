@@ -275,6 +275,16 @@
                         </button>
                     </div>
 
+                    <!-- Storage Status Widget -->
+                    <div class="storage-info-container">
+                        <div class="storage-meta">
+                            <span id="storage-status-text"><i class="fa-solid fa-hard-drive"></i> Checking local storage...</span>
+                        </div>
+                        <div class="storage-progress-bar">
+                            <div class="storage-progress-fill" id="storage-progress-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+
                     <div class="history-table-wrapper">
                         <table class="history-table">
                             <thead>
@@ -361,6 +371,6 @@
     </div>
 
     <!-- Custom JS -->
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>
